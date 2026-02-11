@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace RedisLibrary;
+
 final class RedisLibrary
 {
     protected \Redis $redis;
