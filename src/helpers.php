@@ -15,8 +15,19 @@ if (!function_exists('Redis')) {
         ?bool $active = null
     ): RedisLibrary|false {
         static $redis = null;
+        static $configKey = null;
 
-        if ($redis === null) {
+        $currentKey = md5(serialize([
+            $domain,
+            $password,
+            $host,
+            $port,
+            $database,
+            $persistent,
+            $active,
+        ]));
+
+        if ($redis === null || $configKey !== $currentKey) {
             try {
                 $redis = new RedisLibrary(
                     $domain ?? (defined('BASE') ? (string)BASE : null),
@@ -27,6 +38,7 @@ if (!function_exists('Redis')) {
                     $persistent,
                     $active
                 );
+                $configKey = $currentKey;
             } catch (\Throwable $e) {
                 error_log('Redis baglanamadi: ' . $e->getMessage());
                 return false;
