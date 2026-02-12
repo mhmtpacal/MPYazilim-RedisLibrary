@@ -7,125 +7,170 @@ namespace MPYazilim;
 final class RedisLibrary
 {
     protected \Redis $redis;
-    protected string $prefix = "";
+    protected string $prefix = '';
 
-    protected $host;
-    protected $port;
-    protected $password;
-    protected $domain;
-    protected $database;
-    protected $persistent;
+    protected string $host;
+    protected int $port;
+    protected string $password;
+    protected string $domain;
+    protected int $database;
+    protected bool $persistent;
 
-    public function __construct($host,$port,$password, $database = 0, $domain = '', $persistent = false)
+    private static ?self $instance = null;
+    private static ?string $overrideDomain = null;
+    private static ?string $overridePassword = null;
+
+    public function __construct(?string $domain = null, ?string $password = null)
     {
-        $this->host = $host;
-        $this->port = $port;
-        $this->password = $password;
-        $this->database = $database;
-        $this->domain = $domain;
-        $this->persistent = $persistent;
+        $this->host = (string)env('redis.host');
+        $this->port = (int)env('redis.port');
+        $this->password = $password ?? (string)env('redis.password');
+        $this->database = (int)env('redis.db');
+        $this->domain = $domain ?? (defined('BASE') ? (string)BASE : '');
+        $this->persistent = self::toBool(env('redis.persistent'));
 
         $this->redis = new \Redis();
 
         try {
             $timeout = 2.5;
-            if ($persistent) {
-                $this->redis->pconnect($host, $port, $timeout, 'mpyazilim_persistent');
+
+            if ($this->persistent) {
+                $this->redis->pconnect($this->host, $this->port, $timeout, 'mpyazilim_persistent');
             } else {
-                $this->redis->connect($host, $port, $timeout);
+                $this->redis->connect($this->host, $this->port, $timeout);
             }
 
-            if ($password) {
-                $this->redis->auth($password);
+            if ($this->password !== '') {
+                $this->redis->auth($this->password);
             }
 
-            $this->redis->select($database);
-            $this->prefix = $this->getDomainPrefix() . ":";
-
+            $this->redis->select($this->database);
+            $this->prefix = $this->getDomainPrefix() . ':';
         } catch (\RedisException $e) {
-            file_put_contents('redisLog.txt',$e, FILE_APPEND);
+            error_log('Redis connection error: ' . $e->getMessage());
         }
     }
 
-    public function remember(string $key, callable $callback, int $ttl = 3600){
-        $value = $this->get($key);
+    private static function instance(): self|false
+    {
+        if (!self::isActive()) {
+            return false;
+        }
+
+        if (self::$instance === null) {
+            try {
+                self::$instance = new self(self::$overrideDomain, self::$overridePassword);
+            } catch (\Throwable $e) {
+                error_log('Redis baglanamadi: ' . $e->getMessage());
+                return false;
+            }
+        }
+
+        return self::$instance;
+    }
+
+    public static function configure(?string $domain = null, ?string $password = null): void
+    {
+        self::$overrideDomain = $domain;
+        self::$overridePassword = $password;
+        self::$instance = null;
+    }
+
+    public static function RedisRemember(string $key, int $ttl, callable $callback)
+    {
+        if (!self::isActive()) {
+            return false;
+        }
+
+        return self::remember($key, $callback, $ttl);
+    }
+
+    public static function remember(string $key, callable $callback, int $ttl = 3600)
+    {
+        if (!self::isActive()) {
+            return false;
+        }
+
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        $value = self::get($key);
 
         if ($value !== false && $value !== null) {
             return $value;
         }
 
-        // Callback ile veriyi al
         $value = $callback();
 
-        // Redis'e kaydet
         if ($value !== null) {
-            $this->set($key, $value, ($ttl - 3));
+            $safeTtl = max(1, $ttl - 3);
+            self::set($key, $value, $safeTtl);
         }
 
         return $value;
     }
 
-    /** 🔹 Domain bazlı prefix */
-    public function getDomainPrefix(): string
+    public static function set(string $key, $value, int $ttl = 0): bool
     {
-        $base = $this->domain;
-        if (!str_starts_with($base, 'http://') && !str_starts_with($base, 'https://'))
-            $base = 'https://' . ltrim($base, '/');
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
 
-        $host = parse_url($base, PHP_URL_HOST);
-        $host = preg_replace('/^www\./', '', $host);
-        $prefix = preg_replace('/[^a-z0-9]/i', '', $host);
-        $prefix = substr(md5($prefix), 0, 6);
+        $namespacedKey = $instance->key($key);
+        $storedValue = is_array($value) ? json_encode($value) : $value;
 
-        return strtolower($prefix);
+        if ($ttl > 0) {
+            return (bool)$instance->redis->setex($namespacedKey, $ttl, $storedValue);
+        }
+
+        return (bool)$instance->redis->set($namespacedKey, $storedValue);
     }
 
-    protected function key(string $key): string
+    public static function get(string $key, bool $jsonDecode = true)
     {
-        return $this->prefix . $key;
-    }
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
 
-    // -------------------------------
-    // 🔹 Temel işlemler
-    // -------------------------------
-    public function set(string $key, $value, int $ttl = 0): bool
-    {
-        $key = $this->key($key);
-        $value = is_array($value) ? json_encode($value) : $value;
+        $value = $instance->redis->get($instance->key($key));
 
-        if ($ttl > 0)
-            return $this->redis->setex($key, $ttl, $value);
-
-        return $this->redis->set($key, $value);
-    }
-
-    public function get(string $key, bool $jsonDecode = true)
-    {
-        $key = $this->key($key);
-        $value = $this->redis->get($key);
-
-        if ($jsonDecode && $this->isJson($value))
+        if ($jsonDecode && $instance->isJson($value)) {
             return json_decode($value, true);
+        }
 
         return $value;
     }
 
-    public function delete(string $key): int
+    public static function delete(string $key): int|false
     {
-        return $this->redis->del($this->key($key));
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return (int)$instance->redis->del($instance->key($key));
     }
 
-    public function deleteByPattern(string $pattern): int
+    public static function deleteByPattern(string $pattern): int|false
     {
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
         $iterator = null;
         $deleted = 0;
-        $searchPattern = $this->key($pattern);
+        $searchPattern = $instance->key($pattern);
 
         while (true) {
-            $keys = $this->redis->scan($iterator, $searchPattern, 1000);
+            $keys = $instance->redis->scan($iterator, $searchPattern, 1000);
 
             if (is_array($keys) && !empty($keys)) {
-                $deleted += $this->redis->del($keys);
+                $deleted += (int)$instance->redis->del($keys);
             }
 
             if ($iterator === 0) {
@@ -136,75 +181,166 @@ final class RedisLibrary
         return $deleted;
     }
 
-    public function has(string $key): bool
+    public static function has(string $key): bool
     {
-        return $this->redis->exists($this->key($key)) > 0;
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return $instance->redis->exists($instance->key($key)) > 0;
     }
 
-    // -------------------------------
-    // 🔹 Hash işlemleri
-    // -------------------------------
-    public function hSet(string $key, string|int $field, $value): bool
+    public static function hSet(string $key, string|int $field, $value): bool
     {
-        return (bool)$this->redis->hSet($this->key($key), (string)$field, $value);
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return (bool)$instance->redis->hSet($instance->key($key), (string)$field, $value);
     }
 
-    public function hGet(string $key, string|int $field)
+    public static function hGet(string $key, string|int $field)
     {
-        return $this->redis->hGet($this->key($key), (string)$field);
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return $instance->redis->hGet($instance->key($key), (string)$field);
     }
 
-    public function hDel(string $key, string|int $field): int
+    public static function hDel(string $key, string|int $field): int|false
     {
-        return $this->redis->hDel($this->key($key), (string)$field);
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return (int)$instance->redis->hDel($instance->key($key), (string)$field);
     }
 
-    public function hExists(string $key, string|int $field): bool
+    public static function hExists(string $key, string|int $field): bool
     {
-        return $this->redis->hExists($this->key($key), (string)$field);
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return $instance->redis->hExists($instance->key($key), (string)$field);
     }
 
-    public function hGetAll(string $key): array
+    public static function hGetAll(string $key): array|false
     {
-        return $this->redis->hGetAll($this->key($key));
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return $instance->redis->hGetAll($instance->key($key));
     }
 
-    public function hVals(string $key): array
+    public static function hVals(string $key): array|false
     {
-        return $this->redis->hVals($this->key($key));
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return $instance->redis->hVals($instance->key($key));
     }
 
-    // -------------------------------
-    // 🔹 Diğerleri
-    // -------------------------------
-    public function increment(string $key, int $by = 1): int
+    public static function increment(string $key, int $by = 1): int|false
     {
-        return $this->redis->incrBy($this->key($key), $by);
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return (int)$instance->redis->incrBy($instance->key($key), $by);
     }
 
-    public function decrement(string $key, int $by = 1): int
+    public static function decrement(string $key, int $by = 1): int|false
     {
-        return $this->redis->decrBy($this->key($key), $by);
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return (int)$instance->redis->decrBy($instance->key($key), $by);
     }
 
-    public function flushAll(): bool
+    public static function flushAll(): bool
     {
-        return $this->redis->flushDB();
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        return (bool)$instance->redis->flushDB();
+    }
+
+    public static function isConnected(): bool
+    {
+        $instance = self::instance();
+        if (!$instance) {
+            return false;
+        }
+
+        try {
+            return (bool)$instance->redis->ping();
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    private function getDomainPrefix(): string
+    {
+        $base = $this->domain;
+
+        if ($base === '') {
+            return 'global';
+        }
+
+        if (!str_starts_with($base, 'http://') && !str_starts_with($base, 'https://')) {
+            $base = 'https://' . ltrim($base, '/');
+        }
+
+        $host = (string)parse_url($base, PHP_URL_HOST);
+        $host = preg_replace('/^www\./', '', $host) ?? $host;
+        $prefix = preg_replace('/[^a-z0-9]/i', '', $host) ?? $host;
+        $prefix = substr(md5($prefix), 0, 6);
+
+        return strtolower($prefix);
+    }
+
+    private function key(string $key): string
+    {
+        return $this->prefix . $key;
     }
 
     private function isJson($string): bool
     {
-        if (!is_string($string)) return false;
-        json_decode($string);
-        return (json_last_error() === JSON_ERROR_NONE);
-    }
-
-    public function isConnected(): bool
-    {
-        try {
-            return $this->redis->ping();
-        } catch (\Exception $e) {
+        if (!is_string($string)) {
             return false;
         }
+
+        json_decode($string);
+        return json_last_error() === JSON_ERROR_NONE;
+    }
+
+    private static function toBool(mixed $value): bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return filter_var((string)$value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    private static function isActive(): bool
+    {
+        return self::toBool(env('redis.active'));
     }
 }
