@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace RedisLibrary;
+namespace MPYazilim;
 
 final class RedisLibrary
 {
