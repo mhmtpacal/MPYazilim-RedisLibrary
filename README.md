@@ -21,86 +21,39 @@ Kutuphane asagidaki `env` degerlerini kullanir:
 
 `redis.active=false` ise tum Redis fonksiyonlari (RedisRemember dahil) direkt `false` doner.
 
-## Kullanim
+`.env` ornegi:
 
-Tum temel islemler statik olarak cagirilir:
-
-```php
-use MPYazilim\RedisLibrary;
-
-RedisLibrary::set('user:1', ['name' => 'Mehmet'], 300);
-$user = RedisLibrary::get('user:1');
-
-$exists = RedisLibrary::has('user:1');
-RedisLibrary::delete('user:1');
+```env
+redis.active = true
+redis.host = 127.0.0.1
+redis.port = 6379
+redis.password = CCQ7TAcVAakQjqGyd0XuOYpjS
+redis.db = 0
+redis.persistent = 1
 ```
 
-## RedisRemember
+## Kullanim
 
-`RedisRemember` callback sonucunu cache'ler. Key varsa direkt doner, yoksa callback calisir ve Redis'e yazar.
+Kutuphaneyi kurunca `Redis()` helper fonksiyonu Composer autoload ile otomatik gelir.
+Tum kullanim bu helper uzerinden yapilabilir:
 
 ```php
-use MPYazilim\RedisLibrary;
+Redis()::set('user:1', ['name' => 'Mehmet'], 300);
+$user = Redis()::get('user:1');
 
-$users = RedisLibrary::RedisRemember('users:list', 300, function () {
-    // Ornek: DB sorgusu
+$exists = Redis()::has('user:1');
+Redis()::delete('user:1');
+```
+
+## Remember
+
+`remember` callback sonucunu cache'ler. Key varsa direkt doner, yoksa callback calisir ve Redis'e yazar.
+
+```php
+$users = Redis()::remember('users:list', function () {
     return [
         ['id' => 1, 'name' => 'Ali'],
         ['id' => 2, 'name' => 'Ayse'],
     ];
-});
+}, 300);
 ```
-
-Callback'e disaridan degisken gecmek icin `use (...)` kullanabilirsin:
-
-```php
-use MPYazilim\RedisLibrary;
-
-$status = 'active';
-$limit = 20;
-
-$users = RedisLibrary::RedisRemember("users:list:$status:$limit", 300, function () use ($status, $limit) {
-    // Ornek: parametreli sorgu
-    return userRepository()->listByStatus($status, $limit);
-});
-```
-
-## Constructor Override (Opsiyonel)
-
-Ihtiyac olursa sadece `domain` ve `password` override edilebilir:
-
-```php
-$redis = new \MPYazilim\RedisLibrary('example.com', 'custom-password');
-```
-
-Parametreler verilmezse varsayilan olarak env degerleri kullanilir.
-
-## Manuel Domain/Password Girme (Statik Kullanimda)
-
-Statik kullanimda (`RedisLibrary::set()` gibi) manuel `domain` ve `password` vermek icin once `configure` cagrisi yap:
-
-```php
-use MPYazilim\RedisLibrary;
-
-RedisLibrary::configure('example.com', 'my-redis-password');
-
-RedisLibrary::set('manual:key', 'value', 120);
-$value = RedisLibrary::get('manual:key');
-```
-
-Tekrar env degerlerine donmek icin:
-
-```php
-RedisLibrary::configure();
-```
-
-## Global Redis() Helper (Otomatik)
-
-Kutuphaneyi kurunca `Redis()` fonksiyonu Composer autoload ile otomatik gelir.
-
-```php
-Redis();
-Redis('example.com', 'custom-password');
-```
-
-Fonksiyon ilk cagride baglanti olusturur ve sonraki cagrilarda ayni instance'i kullanir.
