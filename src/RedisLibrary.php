@@ -115,6 +115,27 @@ final class RedisLibrary
         return $this->redis->del($this->key($key));
     }
 
+    public function deleteByPattern(string $pattern): int
+    {
+        $iterator = null;
+        $deleted = 0;
+        $searchPattern = $this->key($pattern);
+
+        while (true) {
+            $keys = $this->redis->scan($iterator, $searchPattern, 1000);
+
+            if (is_array($keys) && !empty($keys)) {
+                $deleted += $this->redis->del($keys);
+            }
+
+            if ($iterator === 0) {
+                break;
+            }
+        }
+
+        return $deleted;
+    }
+
     public function has(string $key): bool
     {
         return $this->redis->exists($this->key($key)) > 0;
