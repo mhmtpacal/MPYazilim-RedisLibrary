@@ -15,6 +15,7 @@ final class RedisLibrary
     protected string $domain;
     protected int $database;
     protected bool $persistent;
+    protected bool $active;
 
     private static ?self $instance = null;
     private static ?bool $overrideActive = null;
@@ -31,7 +32,8 @@ final class RedisLibrary
         ?string $host = null,
         ?int $port = null,
         ?int $database = null,
-        ?bool $persistent = null
+        ?bool $persistent = null,
+        ?bool $active = null
     )
     {
         $this->host = $host ?? self::$overrideHost ?? (string)(self::env('redis.host') ?? '127.0.0.1');
@@ -40,8 +42,13 @@ final class RedisLibrary
         $this->database = $database ?? self::$overrideDatabase ?? (int)(self::env('redis.db') ?? 0);
         $this->domain = $domain ?? (defined('BASE') ? (string)BASE : '');
         $this->persistent = $persistent ?? self::$overridePersistent ?? self::toBool(self::env('redis.persistent') ?? false);
+        $this->active = $active ?? self::$overrideActive ?? self::toBool(self::env('redis.active') ?? true);
 
         $this->redis = new \Redis();
+
+        if (!$this->active) {
+            return;
+        }
 
         try {
             $timeout = 2.5;
@@ -71,7 +78,15 @@ final class RedisLibrary
 
         if (self::$instance === null) {
             try {
-                self::$instance = new self(self::$overrideDomain, self::$overridePassword);
+                self::$instance = new self(
+                    self::$overrideDomain,
+                    self::$overridePassword,
+                    self::$overrideHost,
+                    self::$overridePort,
+                    self::$overrideDatabase,
+                    self::$overridePersistent,
+                    self::$overrideActive
+                );
             } catch (\Throwable $e) {
                 error_log('Redis baglanamadi: ' . $e->getMessage());
                 return false;

@@ -11,7 +11,8 @@ if (!function_exists('Redis')) {
         ?string $host = null,
         ?int $port = null,
         ?int $database = null,
-        ?bool $persistent = null
+        ?bool $persistent = null,
+        ?bool $active = null
     ): RedisLibrary|false {
         static $redis = null;
 
@@ -23,7 +24,8 @@ if (!function_exists('Redis')) {
                     $host,
                     $port,
                     $database,
-                    $persistent
+                    $persistent,
+                    $active
                 );
             } catch (\Throwable $e) {
                 error_log('Redis baglanamadi: ' . $e->getMessage());
