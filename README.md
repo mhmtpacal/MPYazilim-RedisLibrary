@@ -27,33 +27,53 @@ Kutuphane asagidaki `env` degerlerini kullanir:
 redis.active = true
 redis.host = 127.0.0.1
 redis.port = 6379
-redis.password = CCQ7TAcVAakQjqGyd0XuOYpjS
+redis.password = pass
 redis.db = 0
 redis.persistent = 1
 ```
 
 ## Kullanim
 
-Kutuphaneyi kurunca `Redis()` helper fonksiyonu Composer autoload ile otomatik gelir.
-Tum kullanim bu helper uzerinden yapilabilir:
+Tum temel islemler statik olarak cagirilir:
+
+Kutuphaneyi kurunca `Redis()` fonksiyonu Composer autoload ile otomatik gelir.
+
+## RedisRemember
+
+`RedisRemember` callback sonucunu cache'ler. Key varsa direkt doner, yoksa callback calisir ve Redis'e yazar.
 
 ```php
-Redis()::set('user:1', ['name' => 'Mehmet'], 300);
-$user = Redis()::get('user:1');
 
-$exists = Redis()::has('user:1');
-Redis()::delete('user:1');
-```
-
-## Remember
-
-`remember` callback sonucunu cache'ler. Key varsa direkt doner, yoksa callback calisir ve Redis'e yazar.
-
-```php
-$users = Redis()::remember('users:list', function () {
+$users = Redis()::RedisRemember('users:list', 300, function () {
+    // Ornek: DB sorgusu
     return [
         ['id' => 1, 'name' => 'Ali'],
         ['id' => 2, 'name' => 'Ayse'],
     ];
-}, 300);
+});
 ```
+
+Callback'e disaridan degisken gecmek icin `use (...)` kullanabilirsin:
+
+```php
+
+$status = 'active';
+$limit = 20;
+
+$users = Redis()::RedisRemember("users:list:$status:$limit", 300, function () use ($status, $limit) {
+    // Ornek: parametreli sorgu
+    return userRepository()->listByStatus($status, $limit);
+});
+```
+
+## Constructor Override (Opsiyonel)
+
+Ihtiyac olursa sadece `domain` ve `password` override edilebilir:
+
+```php
+$redis = new \MPYazilim\RedisLibrary('example.com', 'custom-password');
+```
+
+Parametreler verilmezse varsayilan olarak env degerleri kullanilir.
+
+Fonksiyon ilk cagride baglanti olusturur ve sonraki cagrilarda ayni instance'i kullanir.
