@@ -13,7 +13,7 @@ if (!function_exists('Redis')) {
             try {
                 $redis = new RedisLibrary(
                     $domain ?? (defined('BASE') ? (string)BASE : null),
-                    $password ?? (string)env('redis.password')
+                    $password ?? (string)(env('redis.password') ?? config('redis.password') ?? globalConfig('redis.password'))
                 );
             } catch (\Throwable $e) {
                 error_log('Redis baglanamadi: ' . $e->getMessage());

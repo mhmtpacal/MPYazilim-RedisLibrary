@@ -22,12 +22,12 @@ final class RedisLibrary
 
     public function __construct(?string $domain = null, ?string $password = null)
     {
-        $this->host = (string)env('redis.host');
-        $this->port = (int)env('redis.port');
-        $this->password = $password ?? (string)env('redis.password');
-        $this->database = (int)env('redis.db');
+        $this->host = (string)(env('redis.host') ?? config('redis.host') ?? globalConfig('redis.host'));
+        $this->port = (int)(env('redis.port') ?? config('redis.port') ?? globalConfig('redis.port'));
+        $this->password = $password ?? (string)(env('redis.password') ?? config('redis.password') ?? globalConfig('redis.password'));
+        $this->database = (int)(env('redis.db') ?? config('redis.db') ?? globalConfig('redis.db'));
         $this->domain = $domain ?? (defined('BASE') ? (string)BASE : '');
-        $this->persistent = self::toBool(env('redis.persistent'));
+        $this->persistent = self::toBool(env('redis.persistent') ?? config('redis.persistent') ?? globalConfig('redis.persistent'));
 
         $this->redis = new \Redis();
 
@@ -341,6 +341,6 @@ final class RedisLibrary
 
     private static function isActive(): bool
     {
-        return self::toBool(env('redis.active'));
+        return self::toBool(env('redis.active') ?? config('redis.active') ?? globalConfig('redis.active'));
     }
 }
