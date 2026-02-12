@@ -93,3 +93,14 @@ Tekrar env degerlerine donmek icin:
 ```php
 RedisLibrary::configure();
 ```
+
+## Global Redis() Helper (Otomatik)
+
+Kutuphaneyi kurunca `Redis()` fonksiyonu Composer autoload ile otomatik gelir.
+
+```php
+Redis();
+Redis('example.com', 'custom-password');
+```
+
+Fonksiyon ilk cagride baglanti olusturur ve sonraki cagrilarda ayni instance'i kullanir.
