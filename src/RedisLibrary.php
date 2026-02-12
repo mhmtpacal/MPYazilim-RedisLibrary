@@ -17,17 +17,29 @@ final class RedisLibrary
     protected bool $persistent;
 
     private static ?self $instance = null;
+    private static ?bool $overrideActive = null;
     private static ?string $overrideDomain = null;
     private static ?string $overridePassword = null;
+    private static ?string $overrideHost = null;
+    private static ?int $overridePort = null;
+    private static ?int $overrideDatabase = null;
+    private static ?bool $overridePersistent = null;
 
-    public function __construct(?string $domain = null, ?string $password = null)
+    public function __construct(
+        ?string $domain = null,
+        ?string $password = null,
+        ?string $host = null,
+        ?int $port = null,
+        ?int $database = null,
+        ?bool $persistent = null
+    )
     {
-        $this->host = (string)self::getConfigValue('redis.host');
-        $this->port = (int)self::getConfigValue('redis.port');
-        $this->password = $password ?? (string)self::getConfigValue('redis.password');
-        $this->database = (int)self::getConfigValue('redis.db');
+        $this->host = $host ?? self::$overrideHost ?? (string)(self::env('redis.host') ?? '127.0.0.1');
+        $this->port = $port ?? self::$overridePort ?? (int)(self::env('redis.port') ?? 6379);
+        $this->password = $password ?? self::$overridePassword ?? (string)(self::env('redis.password') ?? '');
+        $this->database = $database ?? self::$overrideDatabase ?? (int)(self::env('redis.db') ?? 0);
         $this->domain = $domain ?? (defined('BASE') ? (string)BASE : '');
-        $this->persistent = self::toBool(self::getConfigValue('redis.persistent'));
+        $this->persistent = $persistent ?? self::$overridePersistent ?? self::toBool(self::env('redis.persistent') ?? false);
 
         $this->redis = new \Redis();
 
@@ -69,10 +81,23 @@ final class RedisLibrary
         return self::$instance;
     }
 
-    public static function configure(?string $domain = null, ?string $password = null): void
+    public static function configure(
+        ?string $domain = null,
+        ?string $password = null,
+        ?string $host = null,
+        ?int $port = null,
+        ?int $database = null,
+        ?bool $persistent = null,
+        ?bool $active = null
+    ): void
     {
         self::$overrideDomain = $domain;
         self::$overridePassword = $password;
+        self::$overrideHost = $host;
+        self::$overridePort = $port;
+        self::$overrideDatabase = $database;
+        self::$overridePersistent = $persistent;
+        self::$overrideActive = $active;
         self::$instance = null;
     }
 
@@ -341,32 +366,15 @@ final class RedisLibrary
 
     private static function isActive(): bool
     {
-        return self::toBool(self::getConfigValue('redis.active'));
+        return self::$overrideActive ?? self::toBool(self::env('redis.active') ?? true);
     }
 
-    private static function getConfigValue(string $key): mixed
+    private static function env(string $key): mixed
     {
-        if (function_exists('env')) {
-            $value = env($key);
-            if ($value !== null) {
-                return $value;
-            }
+        if (!function_exists('env')) {
+            return null;
         }
 
-        if (function_exists('config')) {
-            $value = config($key);
-            if ($value !== null) {
-                return $value;
-            }
-        }
-
-        if (function_exists('globalConfig')) {
-            $value = globalConfig($key);
-            if ($value !== null) {
-                return $value;
-            }
-        }
-
-        return null;
+        return env($key);
     }
 }
