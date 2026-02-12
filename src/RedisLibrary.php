@@ -22,12 +22,12 @@ final class RedisLibrary
 
     public function __construct(?string $domain = null, ?string $password = null)
     {
-        $this->host = (string)(env('redis.host') ?? config('redis.host') ?? globalConfig('redis.host'));
-        $this->port = (int)(env('redis.port') ?? config('redis.port') ?? globalConfig('redis.port'));
-        $this->password = $password ?? (string)(env('redis.password') ?? config('redis.password') ?? globalConfig('redis.password'));
-        $this->database = (int)(env('redis.db') ?? config('redis.db') ?? globalConfig('redis.db'));
+        $this->host = (string)self::getConfigValue('redis.host');
+        $this->port = (int)self::getConfigValue('redis.port');
+        $this->password = $password ?? (string)self::getConfigValue('redis.password');
+        $this->database = (int)self::getConfigValue('redis.db');
         $this->domain = $domain ?? (defined('BASE') ? (string)BASE : '');
-        $this->persistent = self::toBool(env('redis.persistent') ?? config('redis.persistent') ?? globalConfig('redis.persistent'));
+        $this->persistent = self::toBool(self::getConfigValue('redis.persistent'));
 
         $this->redis = new \Redis();
 
@@ -341,6 +341,32 @@ final class RedisLibrary
 
     private static function isActive(): bool
     {
-        return self::toBool(env('redis.active') ?? config('redis.active') ?? globalConfig('redis.active'));
+        return self::toBool(self::getConfigValue('redis.active'));
+    }
+
+    private static function getConfigValue(string $key): mixed
+    {
+        if (function_exists('env')) {
+            $value = env($key);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        if (function_exists('config')) {
+            $value = config($key);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        if (function_exists('globalConfig')) {
+            $value = globalConfig($key);
+            if ($value !== null) {
+                return $value;
+            }
+        }
+
+        return null;
     }
 }
