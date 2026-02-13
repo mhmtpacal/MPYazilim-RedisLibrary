@@ -66,14 +66,9 @@ $users = Redis()::RedisRemember("users:list:$status:$limit", 300, function () us
 });
 ```
 
-## Constructor Override (Opsiyonel)
+## Notlar
 
-Ihtiyac olursa sadece `domain` ve `password` override edilebilir:
-
-```php
-$redis = new \MPYazilim\RedisLibrary('example.com', 'custom-password');
-```
-
-Parametreler verilmezse varsayilan olarak env degerleri kullanilir.
+`Redis()` ve `RedisLibrary` env tabanli calisir. Baglanti ayarlari sadece `env('redis.*')` degerlerinden okunur.
+Istersen sadece domain override gecebilirsin: `Redis('example.com')`.
 
 Fonksiyon ilk cagride baglanti olusturur ve sonraki cagrilarda ayni instance'i kullanir.

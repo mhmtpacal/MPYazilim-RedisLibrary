@@ -18,33 +18,19 @@ final class RedisLibrary
     protected bool $active;
 
     private static ?self $instance = null;
-    private static ?bool $overrideActive = null;
-    private static ?string $overrideDomain = null;
-    private static ?string $overridePassword = null;
-    private static ?string $overrideHost = null;
-    private static ?int $overridePort = null;
-    private static ?int $overrideDatabase = null;
-    private static ?bool $overridePersistent = null;
 
-    public function __construct(
-        ?string $domain = null,
-        ?string $password = null,
-        ?string $host = null,
-        ?int $port = null,
-        ?int $database = null,
-        ?bool $persistent = null,
-        ?bool $active = null
-    )
+    public function __construct(?string $domain = null)
     {
-        $this->host = $host ?? self::$overrideHost ?? (string)(self::env('redis.host') ?? '127.0.0.1');
-        $this->port = $port ?? self::$overridePort ?? (int)(self::env('redis.port') ?? 6379);
-        $this->password = $password ?? self::$overridePassword ?? (string)(self::env('redis.password') ?? '');
-        $this->database = $database ?? self::$overrideDatabase ?? (int)(self::env('redis.db') ?? 0);
+        $this->host = (string)(self::env('redis.host') ?? '127.0.0.1');
+        $this->port = (int)(self::env('redis.port') ?? 6379);
+        $this->password = (string)(self::env('redis.password') ?? '');
+        $this->database = (int)(self::env('redis.db') ?? 0);
         $this->domain = $domain ?? (defined('BASE') ? (string)BASE : '');
-        $this->persistent = $persistent ?? self::$overridePersistent ?? self::toBool(self::env('redis.persistent') ?? false);
-        $this->active = $active ?? self::$overrideActive ?? self::toBool(self::env('redis.active') ?? true);
+        $this->persistent = self::toBool(self::env('redis.persistent') ?? false);
+        $this->active = self::toBool(self::env('redis.active') ?? true);
 
         $this->redis = new \Redis();
+        self::$instance = $this;
 
         if (!$this->active) {
             return;
@@ -72,65 +58,34 @@ final class RedisLibrary
 
     private static function instance(): self|false
     {
-        if (!self::isActive()) {
-            return false;
-        }
-
         if (self::$instance === null) {
             try {
-                self::$instance = new self(
-                    self::$overrideDomain,
-                    self::$overridePassword,
-                    self::$overrideHost,
-                    self::$overridePort,
-                    self::$overrideDatabase,
-                    self::$overridePersistent,
-                    self::$overrideActive
-                );
+                self::$instance = new self();
             } catch (\Throwable $e) {
                 error_log('Redis baglanamadi: ' . $e->getMessage());
                 return false;
             }
         }
 
+        if (!self::$instance->active) {
+            return false;
+        }
+
         return self::$instance;
     }
 
-    public static function configure(
-        ?string $domain = null,
-        ?string $password = null,
-        ?string $host = null,
-        ?int $port = null,
-        ?int $database = null,
-        ?bool $persistent = null,
-        ?bool $active = null
-    ): void
+    public static function configure(?string $domain = null): void
     {
-        self::$overrideDomain = $domain;
-        self::$overridePassword = $password;
-        self::$overrideHost = $host;
-        self::$overridePort = $port;
-        self::$overrideDatabase = $database;
-        self::$overridePersistent = $persistent;
-        self::$overrideActive = $active;
-        self::$instance = null;
+        self::$instance = new self($domain);
     }
 
     public static function RedisRemember(string $key, int $ttl, callable $callback)
     {
-        if (!self::isActive()) {
-            return false;
-        }
-
         return self::remember($key, $callback, $ttl);
     }
 
     public static function remember(string $key, callable $callback, int $ttl = 3600)
     {
-        if (!self::isActive()) {
-            return false;
-        }
-
         $instance = self::instance();
         if (!$instance) {
             return false;
@@ -377,11 +332,6 @@ final class RedisLibrary
         }
 
         return filter_var((string)$value, FILTER_VALIDATE_BOOLEAN);
-    }
-
-    private static function isActive(): bool
-    {
-        return self::$overrideActive ?? self::toBool(self::env('redis.active') ?? true);
     }
 
     private static function env(string $key): mixed
